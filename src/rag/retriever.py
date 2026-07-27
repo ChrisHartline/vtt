@@ -1,12 +1,13 @@
 import os
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+from typing import Optional
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
 class RAGRetriever:
     def __init__(self, persist_dir: str = "data/chroma"):
         self.persist_dir = persist_dir
-        
+
         # We wrap in try-except in case it hasn't been ingested yet
         try:
             self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -20,14 +21,44 @@ class RAGRetriever:
         except Exception as e:
             print(f"RAG init error: {e}")
             self.vector_store = None
-            
-    def query_knowledge(self, query: str, k: int = 3) -> str:
+
+    def query_knowledge(
+        self,
+        query: str,
+        k: int = 3,
+        source: Optional[str] = None,
+        section: Optional[str] = None,
+    ) -> str:
+        """
+        Search the ingested module text. If `section` (and optionally
+        `source`) is given, the search is scoped to that room/entry only --
+        chunks are tagged with these at ingest time (see rag/ingest.py). This
+        is what keeps a query about the current room from pulling in text
+        from unrelated rooms elsewhere in the module.
+        """
         if not self.vector_store:
             return "Knowledge base not initialized. No modules ingested."
-            
-        results = self.vector_store.similarity_search(query, k=k)
+
+        where = None
+        if source and section:
+            where = {"$and": [{"source": source}, {"section": section}]}
+        elif source:
+            where = {"source": source}
+        elif section:
+            where = {"section": section}
+
+        results = self.vector_store.similarity_search(query, k=k, filter=where)
         if not results:
+            if where:
+                return (
+                    f"No relevant information found for section '{section or ''}'"
+                    f"{f' in {source}' if source else ''}. "
+                    "Try omitting section for a broader (whole-module) search."
+                )
             return "No relevant information found in the adventure modules."
-            
-        combined_text = "\n\n--- MODULE EXCERPT ---\n\n".join([doc.page_content for doc in results])
+
+        combined_text = "\n\n--- MODULE EXCERPT ---\n\n".join(
+            f"[{doc.metadata.get('source', '?')} / {doc.metadata.get('section', '?')}]\n{doc.page_content}"
+            for doc in results
+        )
         return combined_text

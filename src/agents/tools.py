@@ -36,8 +36,26 @@ def set_scene(scene_id: str, description: str, active_entities: list) -> str:
     return state_tools.set_scene(scene_id, description, active_entities)
 
 @tool
-def query_adventure_module(topic: str) -> str:
-    """Queries the RAG database for official adventure module text, rules, and secrets."""
-    return rag_system.query_knowledge(topic)
+def query_adventure_module(topic: str, section: str = None) -> str:
+    """Queries the RAG database for official adventure module text, rules, and secrets.
+
+    Pass `section` matching the current scene's room/entry label (e.g.
+    "12. OAKEN CABINET", "ENTRY 5.") to scope the search to that room only --
+    this is how you avoid pulling in text from rooms the party hasn't reached
+    yet. Only omit `section` for general rules lookups that aren't tied to a
+    specific room; omitting it for a room-specific question risks leaking
+    unrelated rooms/spoilers into your answer.
+    """
+    return rag_system.query_knowledge(topic, section=section)
 
 GAME_TOOLS = [roll_dice, read_character, update_character, write_event, get_scene, set_scene, query_adventure_module]
+
+# DM: full access, including the module-secrets lookup and world-state mutation.
+DM_TOOLS = GAME_TOOLS
+
+# Player/NPC characters: no access to query_adventure_module (that's DM-only
+# knowledge -- module secrets, hidden rooms, monster stats) and no world-state
+# mutation (write_event/set_scene are the DM's job). Scene context reaches
+# players through the DM's narration in the shared message history, not by
+# querying state directly.
+PLAYER_TOOLS = [roll_dice, read_character, update_character]

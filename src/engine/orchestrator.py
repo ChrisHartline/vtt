@@ -4,11 +4,42 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, Tool
 from langchain_anthropic import ChatAnthropic
 
 from .state import GameState
-from ..agents.tools import GAME_TOOLS
+from ..agents.tools import GAME_TOOLS, DM_TOOLS, PLAYER_TOOLS
 
-# Initialize LLM
+# Initialize LLM -- separate tool bindings per role, NOT a shared one. This is
+# the actual DM/player knowledge wall: an LLM can only emit a tool call for a
+# tool it was bound to, so player_node can never invoke query_adventure_module
+# regardless of what the prompt says.
 llm = ChatAnthropic(model="claude-sonnet-4-6", max_tokens=1024)
-llm_with_tools = llm.bind_tools(GAME_TOOLS)
+dm_llm_with_tools = llm.bind_tools(DM_TOOLS)
+player_llm_with_tools = llm.bind_tools(PLAYER_TOOLS)
+
+# How many of the most recent messages keep their full tool-result content.
+# Anything older gets its ToolMessage content collapsed to a stub -- a RAG
+# pull or state lookup already did its job narrating/resolving the turn it
+# was retrieved for; it doesn't need to keep re-inflating every later prompt.
+TOOL_RESULT_MEMORY = 6
+
+
+def _prune_old_tool_results(messages, keep_recent: int = TOOL_RESULT_MEMORY):
+    """
+    Build the view of `messages` sent to the LLM, with old ToolMessage content
+    collapsed. Does NOT mutate `messages` or graph state -- only what's
+    actually sent to this invocation is trimmed; the full history is still
+    there for the CLI transcript and the event log.
+    """
+    cutoff = len(messages) - keep_recent
+    pruned = []
+    for i, msg in enumerate(messages):
+        if isinstance(msg, ToolMessage) and i < cutoff:
+            pruned.append(ToolMessage(
+                content="[Result omitted -- already used earlier in the scene]",
+                tool_call_id=msg.tool_call_id,
+            ))
+        else:
+            pruned.append(msg)
+    return pruned
+
 
 # Nodes
 def dm_node(state: GameState):
@@ -17,42 +48,52 @@ def dm_node(state: GameState):
         "You have access to a query_adventure_module tool to read the official module text. "
         "Use it ONLY when entering a new, unfamiliar room or when you need to look up a specific rule or stat block. "
         "Do NOT use it to resolve general player actions (like casting a spell) unless you need the module's specific ruling. "
-        "If the retrieved text is irrelevant to the current scene, ignore it and rely on the active scene description. "
+        "IMPORTANT: always pass the `section` argument matching the module's own room/entry label for the "
+        "party's current location (e.g. '12. OAKEN CABINET', 'ENTRY 5.') -- this scopes the lookup to that room "
+        "only. When you set a scene with set_scene, use the module's own room label as (or within) the scene_id "
+        "so you can pass the same label back into query_adventure_module later. Only omit `section` for a "
+        "general rules lookup that isn't tied to a specific room. "
+        "Never reveal secrets, hidden rooms, or monster stats the players haven't discovered through play. "
         "Resolve player actions fairly. Use tools to update the state or roll dice if needed. "
         "Log significant actions using the write_event tool. "
         "End your turn by waiting for the player to act."
     ))
-    messages = [prompt] + state["messages"]
-    
+    messages = [prompt] + _prune_old_tool_results(state["messages"])
+
     # Ensure the last message is a HumanMessage to satisfy Anthropic API
     from langchain_core.messages import AIMessage, HumanMessage
     if isinstance(messages[-1], AIMessage):
         messages.append(HumanMessage(content="The player has acted. Please respond and narrate the outcome."))
-        
-    response = llm_with_tools.invoke(messages)
+
+    response = dm_llm_with_tools.invoke(messages)
     return {"messages": [response], "current_turn": "dm"}
 
 def player_node(state: GameState):
     prompt = SystemMessage(content=(
         "You are an AI player controlling a character in this tabletop RPG. "
         "Respond to the DM's scene in character. Describe your actions or what you say. "
-        "Use tools to check your character sheet if you need to know your stats."
+        "Use tools to check your character sheet if you need to know your stats. "
+        "You only know what the DM has narrated or your character would plausibly know -- "
+        "you have no access to the adventure module and should never act as if you do."
     ))
-    messages = [prompt] + state["messages"]
-    
+    messages = [prompt] + _prune_old_tool_results(state["messages"])
+
     from langchain_core.messages import AIMessage, HumanMessage
     if isinstance(messages[-1], AIMessage):
         messages.append(HumanMessage(content="It is your turn. What do you do?"))
-        
-    response = llm_with_tools.invoke(messages)
+
+    response = player_llm_with_tools.invoke(messages)
     return {"messages": [response], "current_turn": "player"}
 
 def tool_executor(state: GameState):
     last_msg = state["messages"][-1]
     tool_messages = []
-    
+
+    # Full tool map for execution -- role restriction already happened at
+    # bind_tools() time above, so a role can never produce a tool_call this
+    # map wouldn't be allowed to satisfy.
     tool_map = {tool.name: tool for tool in GAME_TOOLS}
-    
+
     for tool_call in last_msg.tool_calls:
         tool_func = tool_map[tool_call["name"]]
         try:
