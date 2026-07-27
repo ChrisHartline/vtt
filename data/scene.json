@@ -1,0 +1,12 @@
+{
+  "scene_id": "scene_001_forgotten_library",
+  "description": "The Forgotten Library of Ashenmoor — a crumbling ancient vault buried beneath a ruined tower. Dusty bookshelves stretch toward a vaulted ceiling lost in shadow. Bioluminescent moss clings to the stone walls, casting a cold blue-green glow. The air smells of old parchment, mildew, and something faintly arcane. A heavy iron door stands at the far end, sealed with a glowing rune. Strange whispers drift between the shelves.",
+  "active_entities": [
+    "rhea_the_wizard",
+    "sealed_iron_door",
+    "whispering_shelves",
+    "bioluminescent_moss",
+    "ancient_tomes"
+  ],
+  "events": []
+}
