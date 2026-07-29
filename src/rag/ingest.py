@@ -1,6 +1,4 @@
 import os
-# Bypass network blocks by forcing HuggingFace to use a mirror
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import glob
 import re
 from docling.document_converter import DocumentConverter
@@ -81,11 +79,18 @@ def ingest_pdfs(source_dir: str = "knowledge_base/dnd", persist_dir: str = "data
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     print(f"Saving to Chroma DB at {persist_dir}...")
-    vector_store = Chroma.from_documents(
-        documents=all_chunks,
-        embedding=embeddings,
-        persist_directory=persist_dir
-    )
+    # Chroma.from_documents() ADDS to whatever's already at persist_dir rather
+    # than replacing it -- re-running ingestion (e.g. after a chunking-scheme
+    # change, or just adding a new module) silently doubles up on old data
+    # instead of rebuilding clean. Reset the collection first so re-running
+    # this is idempotent.
+    vector_store = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+    existing_ids = vector_store.get(limit=1_000_000)["ids"]
+    if existing_ids:
+        print(f"Clearing {len(existing_ids)} existing chunks before re-ingesting...")
+        vector_store.delete(ids=existing_ids)
+
+    vector_store.add_documents(all_chunks)
     print("Ingestion complete!")
 
 if __name__ == "__main__":

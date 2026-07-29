@@ -1,5 +1,4 @@
 import os
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from typing import Optional
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
