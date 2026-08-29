@@ -1,4 +1,4 @@
-from src.tools.dice import roll_dice
+from vtt.tools.dice import roll_dice
 
 def test_roll_dice_no_modifier():
     result = roll_dice("1d20")

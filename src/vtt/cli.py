@@ -1,17 +1,13 @@
 
 import os
-import sys
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage
 
-# Ensure src module is importable from script dir
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 load_dotenv()
 
-from src.engine.orchestrator import app
-from src.state.store import StateStore
-from src.state.models import CharacterSheet
+from vtt.engine.orchestrator import app
+from vtt.state.store import StateStore
+from vtt.state.models import CharacterSheet
 
 def setup_mock_data():
     store = StateStore()

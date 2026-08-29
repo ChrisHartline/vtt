@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from src.state.models import CharacterSheet, EventLogEntry, HitPoints, AbilityScores, Personality
+from vtt.state.models import CharacterSheet, EventLogEntry, HitPoints, AbilityScores, Personality
 
 def test_valid_character_sheet():
     char_data = {
