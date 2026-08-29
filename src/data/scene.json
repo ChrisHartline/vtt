@@ -1,0 +1,8 @@
+{
+  "scene_id": "1. THE THRESHOLD CHAMBER",
+  "description": "The entrance hall of the Ruins of Velmoor — a crumbling stone chamber, 30 ft. square. Faded arcane murals line the walls. A heavy iron door stands to the north. Dusty flagstones cover the floor. Torchlight flickers from a single wall sconce. The air smells of old ash and damp stone.",
+  "active_entities": [
+    "Rhea (Wizard, Level 3)"
+  ],
+  "events": []
+}
