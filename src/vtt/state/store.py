@@ -1,12 +1,23 @@
 import json
 import os
+from pathlib import Path
 from typing import List, Optional, Dict
 from pydantic import ValidationError
 from .models import CharacterSheet, EventLogEntry, SceneState
 
+# store.py -> state/ -> vtt/ -> src/ -> repo root.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
 class StateStore:
-    def __init__(self, storage_dir: str = "data"):
-        self.storage_dir = storage_dir
+    def __init__(self, storage_dir: str | None = None):
+        # Default resolves to the repo root, not the process's cwd -- a
+        # bare "data" here previously meant campaign state silently landed
+        # in whatever directory the game happened to be launched from
+        # (e.g. src/data/ instead of data/ if run from inside src/),
+        # producing two divergent, un-erroring copies of the same
+        # campaign. VTT_DATA_DIR overrides for a host (e.g. Everwood) that
+        # wants state somewhere else entirely.
+        self.storage_dir = storage_dir or os.environ.get("VTT_DATA_DIR") or str(_REPO_ROOT / "data")
         os.makedirs(self.storage_dir, exist_ok=True)
         self.characters_path = os.path.join(self.storage_dir, "characters.json")
         self.events_path = os.path.join(self.storage_dir, "events.jsonl")
