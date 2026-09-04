@@ -1,16 +1,12 @@
 
 import os
-from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, AIMessage
+from pathlib import Path
 
-load_dotenv()
-
-from vtt.engine.orchestrator import app
 from vtt.state.store import StateStore
 from vtt.state.models import CharacterSheet
+from vtt.tools.state_tools import configure_store
 
-def setup_mock_data():
-    store = StateStore()
+def setup_mock_data(store: StateStore):
     
     # Create sample wizard if not exists
     if not store.get_character("rhea"):
@@ -34,6 +30,8 @@ def setup_mock_data():
         print("Mock character 'rhea' created.")
 
 def print_messages(messages):
+    from langchain_core.messages import HumanMessage
+
     for msg in messages:
         role = "Human/System" if isinstance(msg, HumanMessage) else "AI"
         
@@ -50,13 +48,31 @@ def print_messages(messages):
         print(f"\n{role}: {msg.content}\n")
 
 def main():
+    try:
+        from dotenv import load_dotenv
+        from langchain_core.messages import HumanMessage
+        from vtt.engine.orchestrator import app
+    except ImportError:
+        print(
+            "The DM runtime is not installed. "
+            "Install it with: pip install 'vtt[dm]'"
+        )
+        return 2
+
+    load_dotenv()
+
     if not os.getenv("ANTHROPIC_API_KEY"):
         print("Error: ANTHROPIC_API_KEY environment variable not set. Please create a .env file.")
         return
 
     print("\nAI Multi-Agent Tabletop RPG Engine (CLI MVP)")
     print("Setting up game state...")
-    setup_mock_data()
+    # The CLI owns its convenience default. Library consumers must pass a
+    # storage directory or set VTT_DATA_DIR explicitly.
+    data_dir = Path(os.environ.get("VTT_DATA_DIR", Path.cwd() / "data"))
+    store = StateStore(data_dir)
+    configure_store(store)
+    setup_mock_data(store)
     
     state = {
         "messages": [],
@@ -97,4 +113,4 @@ def main():
             break
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

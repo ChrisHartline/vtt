@@ -1,18 +1,32 @@
 from ..state.store import StateStore
 from ..state.models import EventLogEntry, CharacterSheet, SceneState
 
-store = StateStore()
+_store: StateStore | None = None
+
+
+def configure_store(store: StateStore) -> None:
+    """Bind the privileged DM/state tools to host-configured storage."""
+    global _store
+    _store = store
+
+
+def get_store() -> StateStore:
+    """Return the configured store, resolving VTT_DATA_DIR lazily if needed."""
+    global _store
+    if _store is None:
+        _store = StateStore()
+    return _store
 
 def read_character(character_id: str) -> str:
     """Reads a character sheet by ID."""
-    char = store.get_character(character_id)
+    char = get_store().get_character(character_id)
     if char:
         return char.model_dump_json(indent=2)
     return f"Character '{character_id}' not found."
 
 def update_character(character_id: str, patch: dict) -> str:
     """Updates a character using a JSON patch (dictionary)."""
-    success = store.update_character(character_id, patch)
+    success = get_store().update_character(character_id, patch)
     if success:
         return f"Successfully updated character '{character_id}'."
     return f"Failed to update character '{character_id}'. Validation error or not found."
@@ -33,14 +47,14 @@ def write_event(actor: str, event_type: str, description: str, outcome: str, ses
             roll=roll,
             outcome=outcome
         )
-        store.log_event(event)
+        get_store().log_event(event)
         return f"Event logged successfully: {event_id}"
     except Exception as e:
         return f"Error logging event: {e}"
 
 def get_scene() -> str:
     """Reads the current scene state."""
-    scene = store.get_scene()
+    scene = get_store().get_scene()
     if scene:
         return scene.model_dump_json(indent=2)
     return "No active scene found."
@@ -54,7 +68,7 @@ def set_scene(scene_id: str, description: str, active_entities: list) -> str:
             active_entities=active_entities,
             events=[] # Reset events for the new scene or preserve them if needed
         )
-        store.save_scene(scene)
+        get_store().save_scene(scene)
         return "Scene updated successfully."
     except Exception as e:
         return f"Error setting scene: {e}"

@@ -3,7 +3,14 @@ from ..tools import dice
 from ..tools import state_tools
 from ..rag.retriever import RAGRetriever
 
-rag_system = RAGRetriever()
+_rag_system = None
+
+
+def _get_rag_system():
+    global _rag_system
+    if _rag_system is None:
+        _rag_system = RAGRetriever()
+    return _rag_system
 
 @tool
 def roll_dice(expression: str) -> str:
@@ -46,7 +53,7 @@ def query_adventure_module(topic: str, section: str = None) -> str:
     specific room; omitting it for a room-specific question risks leaking
     unrelated rooms/spoilers into your answer.
     """
-    return rag_system.query_knowledge(topic, section=section)
+    return _get_rag_system().query_knowledge(topic, section=section)
 
 GAME_TOOLS = [roll_dice, read_character, update_character, write_event, get_scene, set_scene, query_adventure_module]
 
@@ -58,4 +65,8 @@ DM_TOOLS = GAME_TOOLS
 # mutation (write_event/set_scene are the DM's job). Scene context reaches
 # players through the DM's narration in the shared message history, not by
 # querying state directly.
-PLAYER_TOOLS = [roll_dice, read_character, update_character]
+# This list is retained for the prototype orchestrator only. Host integrations
+# should use vtt.PlayerGateway, whose identity-bound API offers no direct state
+# mutation. The legacy AI player can roll dice, but state changes belong to the
+# DM/authority.
+PLAYER_TOOLS = [roll_dice]

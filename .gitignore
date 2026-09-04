@@ -9,7 +9,11 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.pytest_tmp*/
 pytest_out.txt
+build/
+dist/
+.wheel-test*/
 
 # Virtual environments
 .venv/

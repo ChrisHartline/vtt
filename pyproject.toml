@@ -3,31 +3,40 @@ name = "vtt"
 version = "0.1.0"
 description = "Tabletop RPG engine: dice, character sheets, scene/event state, and RAG-backed adventure-module lookup."
 requires-python = ">=3.10"
+readme = "README.md"
 dependencies = [
-    # Agent orchestration
+    # Lightweight contracts, state, and dice utilities.
+    "pydantic>=2.13.0",
+]
+
+[project.optional-dependencies]
+dm = [
     "langgraph>=1.1.0",
     "langchain-core>=1.3.0",
     "langchain-anthropic>=1.4.0",
-
-    # RAG: PDF parsing, chunking, embeddings, vector store.
-    # NOTE (2026-08-28): mirrored verbatim from requirements.txt as of the
-    # last GitHub push (2026-07-29). If docling has since been dropped
-    # locally, this list is stale -- push that change and re-sync rather
-    # than trusting this comment over your actual local state.
+    "python-dotenv>=1.2.0",
+]
+rag = [
+    "langchain-core>=1.3.0",
+    "langchain-chroma>=1.1.0",
+    "langchain-huggingface>=1.2.0",
+    "sentence-transformers>=5.6.0",
+    "chromadb>=1.5.0",
+]
+ingest = [
     "docling>=2.115.0",
+    "langchain-core>=1.3.0",
     "langchain-text-splitters>=1.1.0",
     "langchain-chroma>=1.1.0",
     "langchain-huggingface>=1.2.0",
     "sentence-transformers>=5.6.0",
     "chromadb>=1.5.0",
-
-    # State / config
-    "pydantic>=2.13.0",
-    "python-dotenv>=1.2.0",
 ]
+dev = ["pytest>=9.0.0", "build>=1.2.0"]
 
-[project.optional-dependencies]
-dev = ["pytest>=9.0.0"]
+[project.scripts]
+vtt = "vtt.cli:main"
+vtt-ingest = "vtt.rag.ingest:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

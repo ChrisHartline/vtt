@@ -1,37 +1,49 @@
 import json
-import os
 from pathlib import Path
-from typing import List, Optional, Dict
-from pydantic import ValidationError
-from .models import CharacterSheet, EventLogEntry, SceneState
+from typing import Dict, List, Optional
 
-# store.py -> state/ -> vtt/ -> src/ -> repo root.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+from pydantic import ValidationError
+
+from ..config import resolve_data_dir, validate_identifier
+from .models import (
+    CharacterSheet,
+    EventLogEntry,
+    PlayerAction,
+    PlayerActionResult,
+    SceneState,
+)
 
 class StateStore:
-    def __init__(self, storage_dir: str | None = None):
-        # Default resolves to the repo root, not the process's cwd -- a
-        # bare "data" here previously meant campaign state silently landed
-        # in whatever directory the game happened to be launched from
-        # (e.g. src/data/ instead of data/ if run from inside src/),
-        # producing two divergent, un-erroring copies of the same
-        # campaign. VTT_DATA_DIR overrides for a host (e.g. Everwood) that
-        # wants state somewhere else entirely.
-        self.storage_dir = storage_dir or os.environ.get("VTT_DATA_DIR") or str(_REPO_ROOT / "data")
-        os.makedirs(self.storage_dir, exist_ok=True)
-        self.characters_path = os.path.join(self.storage_dir, "characters.json")
-        self.events_path = os.path.join(self.storage_dir, "events.jsonl")
-        self.scene_path = os.path.join(self.storage_dir, "scene.json")
+    def __init__(
+        self,
+        storage_dir: str | Path | None = None,
+        campaign_id: str | None = None,
+    ):
+        base_dir = resolve_data_dir(storage_dir)
+        self.campaign_id = (
+            validate_identifier(campaign_id, "campaign_id") if campaign_id else None
+        )
+        self.storage_dir = (
+            base_dir / "campaigns" / self.campaign_id
+            if self.campaign_id
+            else base_dir
+        )
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
+        self.characters_path = self.storage_dir / "characters.json"
+        self.events_path = self.storage_dir / "events.jsonl"
+        self.scene_path = self.storage_dir / "scene.json"
+        self.actions_path = self.storage_dir / "player_actions.jsonl"
+        self.action_results_path = self.storage_dir / "player_action_results.jsonl"
 
     # Character logic
     def _read_characters(self) -> Dict[str, dict]:
-        if not os.path.exists(self.characters_path):
+        if not self.characters_path.exists():
             return {}
-        with open(self.characters_path, "r", encoding="utf-8") as f:
+        with self.characters_path.open("r", encoding="utf-8") as f:
             return json.load(f)
 
     def _write_characters(self, chars: Dict[str, dict]):
-        with open(self.characters_path, "w", encoding="utf-8") as f:
+        with self.characters_path.open("w", encoding="utf-8") as f:
             json.dump(chars, f, indent=2)
 
     def get_character(self, character_id: str) -> Optional[CharacterSheet]:
@@ -72,14 +84,14 @@ class StateStore:
 
     # Event logic
     def log_event(self, event: EventLogEntry):
-        with open(self.events_path, "a", encoding="utf-8") as f:
+        with self.events_path.open("a", encoding="utf-8") as f:
             f.write(event.model_dump_json() + "\n")
 
     def get_events(self) -> List[EventLogEntry]:
-        if not os.path.exists(self.events_path):
+        if not self.events_path.exists():
             return []
         events = []
-        with open(self.events_path, "r", encoding="utf-8") as f:
+        with self.events_path.open("r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     events.append(EventLogEntry.model_validate_json(line))
@@ -87,11 +99,65 @@ class StateStore:
 
     # Scene logic
     def get_scene(self) -> Optional[SceneState]:
-        if not os.path.exists(self.scene_path):
+        if not self.scene_path.exists():
             return None
-        with open(self.scene_path, "r", encoding="utf-8") as f:
+        with self.scene_path.open("r", encoding="utf-8") as f:
             return SceneState.model_validate_json(f.read())
 
     def save_scene(self, scene: SceneState):
-        with open(self.scene_path, "w", encoding="utf-8") as f:
+        with self.scene_path.open("w", encoding="utf-8") as f:
             f.write(scene.model_dump_json(indent=2))
+
+    def submit_player_action(self, action: PlayerAction) -> PlayerAction:
+        validate_identifier(action.action_id, "action_id")
+        validate_identifier(action.campaign_id, "campaign_id")
+        validate_identifier(action.player_id, "player_id")
+        validate_identifier(action.character_id, "character_id")
+        if self.campaign_id and action.campaign_id != self.campaign_id:
+            raise ValueError("Player action campaign does not match this store.")
+        existing = self.get_player_action(action.action_id)
+        if existing:
+            if existing != action:
+                raise ValueError(
+                    f"Action ID '{action.action_id}' was already used for a different request."
+                )
+            return existing
+        with self.actions_path.open("a", encoding="utf-8") as f:
+            f.write(action.model_dump_json() + "\n")
+        return action
+
+    def get_player_action(self, action_id: str) -> Optional[PlayerAction]:
+        if not self.actions_path.exists():
+            return None
+        with self.actions_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    action = PlayerAction.model_validate_json(line)
+                    if action.action_id == action_id:
+                        return action
+        return None
+
+    def log_player_action_result(self, result: PlayerActionResult) -> None:
+        if result.status == "pending":
+            raise ValueError("Only resolved or rejected action results may be logged.")
+        if self.campaign_id and result.campaign_id != self.campaign_id:
+            raise ValueError("Action result campaign does not match this store.")
+        action = self.get_player_action(result.action_id)
+        if action is None:
+            raise ValueError(
+                f"Cannot resolve unknown action '{result.action_id}'."
+            )
+        with self.action_results_path.open("a", encoding="utf-8") as f:
+            f.write(result.model_dump_json() + "\n")
+
+    def get_player_action_result(self, action_id: str) -> Optional[PlayerActionResult]:
+        if not self.action_results_path.exists():
+            return None
+        latest = None
+        with self.action_results_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    result = PlayerActionResult.model_validate_json(line)
+                    if result.action_id == action_id:
+                        latest = result
+        return latest

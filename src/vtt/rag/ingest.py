@@ -1,11 +1,6 @@
 import os
 import glob
 import re
-from docling.document_converter import DocumentConverter
-from langchain_text_splitters import MarkdownTextSplitter
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_core.documents import Document
 
 # These TSR modules render (via Docling) with '## ' markdown headers for every
 # room/entry/section -- e.g. "## 12. OAKEN CABINET", "## ENTRY 5.",
@@ -39,6 +34,18 @@ def split_by_section(markdown: str):
 
 
 def ingest_pdfs(source_dir: str = "knowledge_base/dnd", persist_dir: str = "data/chroma"):
+    try:
+        from docling.document_converter import DocumentConverter
+        from langchain_chroma import Chroma
+        from langchain_core.documents import Document
+        from langchain_huggingface import HuggingFaceEmbeddings
+        from langchain_text_splitters import MarkdownTextSplitter
+    except ImportError as exc:
+        raise RuntimeError(
+            "PDF ingestion dependencies are not installed. "
+            "Install the package with the 'ingest' extra: pip install 'vtt[ingest]'."
+        ) from exc
+
     print(f"Starting ingestion from {source_dir}...")
     converter = DocumentConverter()
 
@@ -93,5 +100,9 @@ def ingest_pdfs(source_dir: str = "knowledge_base/dnd", persist_dir: str = "data
     vector_store.add_documents(all_chunks)
     print("Ingestion complete!")
 
-if __name__ == "__main__":
+def main():
     ingest_pdfs()
+
+
+if __name__ == "__main__":
+    main()

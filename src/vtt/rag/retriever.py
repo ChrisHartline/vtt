@@ -1,14 +1,21 @@
 import os
+from pathlib import Path
 from typing import Optional
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
 
 class RAGRetriever:
-    def __init__(self, persist_dir: str = "data/chroma"):
-        self.persist_dir = persist_dir
+    def __init__(self, persist_dir: str | Path | None = None):
+        configured_dir = persist_dir or os.environ.get("VTT_RAG_DIR")
+        if not configured_dir:
+            raise RuntimeError(
+                "VTT RAG storage is not configured. Pass persist_dir or set VTT_RAG_DIR."
+            )
+        self.persist_dir = str(Path(configured_dir).expanduser().resolve())
 
         # We wrap in try-except in case it hasn't been ingested yet
         try:
+            from langchain_chroma import Chroma
+            from langchain_huggingface import HuggingFaceEmbeddings
+
             self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             if os.path.exists(self.persist_dir):
                 self.vector_store = Chroma(
@@ -17,6 +24,11 @@ class RAGRetriever:
                 )
             else:
                 self.vector_store = None
+        except ImportError as exc:
+            raise RuntimeError(
+                "RAG dependencies are not installed. "
+                "Install the package with the 'rag' extra: pip install 'vtt[rag]'."
+            ) from exc
         except Exception as e:
             print(f"RAG init error: {e}")
             self.vector_store = None
